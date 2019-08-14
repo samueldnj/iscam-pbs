@@ -2214,7 +2214,7 @@ FUNCTION calcTotalMortality
 			M(ig)(i) = M(ig)(i-1) * mfexp(log_m_devs(i));
 		}
 		// TODO fix for reference point calculations
-		// m_bar = mean( M_tot.sub(pf_cntrl(1),pf_cntrl(2)) );	      
+		m_bar = mean( M(1).sub(pf_cntrl(1),pf_cntrl(2)) );	      
 	}
 	  
 	// |---------------------------------------------------------------------------------|
@@ -2767,6 +2767,7 @@ FUNCTION void calcStockRecruitment()
 	
 	dvariable phib;//,so,beta;
 	dvector         fa(sage,nage); //fecundity here
+	dvar_vector fa_bar(sage,nage); //fecundity here
 	dvar_vector   stmp(sage,nage);
 	dvar_vector     ma(sage,nage);
 	dvar_vector tmp_rt(syr+sage,nyr);
@@ -2793,6 +2794,7 @@ FUNCTION void calcStockRecruitment()
 				{
 					ma(j) = mean(trans(M(ig))(j));
 					fa(j) = mean( trans(d3_wt_mat(ig))(j) );
+					fa_bar(j) = mean(trans(d3_wt_mat(ig))(j).sub(pf_cntrl(3),pf_cntrl(4)));
 					if(j > sage)
 					{
 						lx(j) = lx(j-1) * mfexp(-ma(j-1));
@@ -2813,8 +2815,8 @@ FUNCTION void calcStockRecruitment()
 				}
 
 				// | Step 5. spawning biomass projection under natural mortality only.
-				stmp          = mfexp(-M(ig)(nyr)*d_iscamCntrl(13));
-				sbt(g,nyr+1) += elem_prod(N(ig)(nyr+1),d3_wt_mat(ig)(i)) * stmp;
+				stmp          = mfexp(-m_bar*d_iscamCntrl(13));
+				sbt(g,nyr+1) += elem_prod(N(ig)(nyr+1),fa_bar) * stmp;
 			}
 
 			// | Estimated recruits
