@@ -920,9 +920,10 @@ DATA_SECTION
 	// |    6      logistic with fixed parameters.
 	// |    7      logistic function of body weight with 2 parameters.
 	// |    8      logistic 3 parameter function based on mean weight deviations.
+	// |    9      fixed to the same as another gear
 	// |    11     length-based logistic function with 2 parametrs based on mean length.
 	// |    12     length-based selectivity coefficients with cubic spline interpolation.
-	// |	13 	   age-based selectivity coefficients with age_min-age_max parameters.
+	// |	  13 	   age-based selectivity coefficients with age_min-age_max parameters.
 	// |
 	// | selex_controls (1-10)
 	// |  1  -> isel_type - switch for selectivity.
@@ -1030,6 +1031,12 @@ DATA_SECTION
 					isel_npar(i) = 3;
 					jsel_npar(i) = n_sel_blocks(i);
 					break;
+
+				case 9:
+					// mirrored selectivity
+					isel_npar(i) = 2;
+					jsel_npar(i) = n_sel_blocks(i); 
+					break;
 					
 				case 11:
 					// Logistic length-based selectivity.
@@ -1122,6 +1129,30 @@ DATA_SECTION
 
 	init_vector d_iscamCntrl(1,20);
 	int verbose;
+
+	// |---------------------------------------------------------------------------------|
+	// | SOK controls                                                          |
+	// |---------------------------------------------------------------------------------|
+	// | fec 				= eggs per individual fish
+	// | gamma 			= SOK conversion factor
+	// | pEff_lb 		= lower bound on proportion effective
+	// | pEff_ub 		= upper bound on proportion effective
+	// | pFemale 		= proportion female
+	// | gNumSOK 		= gear Number
+	// | selGear 		= gear number for mirrored selectivity
+	// | postPondM 	= post ponding mortality rate
+	// | nPosSOK 		= number of years with positive SOK catch
+
+	init fec;
+	init gamma;
+	init_vector propEffDist(1,2);
+	init pFemale;
+	init_int gNumSOK;
+	init_int selGearSOK;
+	init postPondM;
+	init_int nPosSOK;
+	init_int logitPropEffPhz;
+
 	init_int eofc;
 	LOC_CALCS
     if((d_iscamCntrl(13) || d_iscamCntrl(18)) && d_iscamCntrl(18) > 0.0001){
@@ -1443,6 +1474,13 @@ PARAMETER_SECTION
 	!!gamma_r = 0;
 
 	// |---------------------------------------------------------------------------------|
+	// | SPAWN ON KELP PROPORTION EFFECTIVE DEVS                                         |
+	// |---------------------------------------------------------------------------------|
+	// | logitPropEff_t: logit scale deviation of proportion effective 
+	!! int nPhz_propEff = logitPropEffPhz;
+	init_bounded_dev_vector logitPropEff_t(1,nPosSOK,-5,5,nPhz_propEff);
+
+	// |---------------------------------------------------------------------------------|
 	// | OBJECTIVE FUNCTION VALUE
 	// |---------------------------------------------------------------------------------|
 	// | - the value that ADMB will minimize, called objfun in iSCAM
@@ -1450,55 +1488,61 @@ PARAMETER_SECTION
 	objective_function_value objfun;
 	
 
-    // |---------------------------------------------------------------------------------|
-    // | POPULATION VARIABLES
-    // |---------------------------------------------------------------------------------|
-    // | - m_bar       -> Average natural mortality rate from syr to nyr.
-    // |
+  // |---------------------------------------------------------------------------------|
+  // | POPULATION VARIABLES
+  // |---------------------------------------------------------------------------------|
+  // | - m_bar       -> Average natural mortality rate from syr to nyr.
+  // |
 	number m_bar;	///< Average natural mortality rate.			
 
 
 	// |---------------------------------------------------------------------------------|
 	// | POPULATION VECTORS
 	// |---------------------------------------------------------------------------------|
-    // | - ro          -> theoretical unfished age-sage recruits. 
-    // | - bo          -> theoretical unfished spawning biomass (MSY-based ref point).
-    // | - sbo         -> unfished spawning biomass at the time of spawning.
-    // | - kappa       -> Goodyear recruitment compensation ratio K = 4h/(1-h); h=K/(4+K)
-    // | - so          -> Initial slope (max R/S) of the stock-recruitment relationship.
-    // | - beta        -> Density dependent term in the stock-recruitment relationship.
-    // | - m           -> Instantaneous natural mortality rate by nsex
-    // | - log_avgrec  -> Average sage recruitment(syr-nyr,area,group).
-    // | - log_recinit -> Avg. initial recruitment for initial year cohorts(area,group).
+  // | - ro          -> theoretical unfished age-sage recruits. 
+  // | - bo          -> theoretical unfished spawning biomass (MSY-based ref point).
+  // | - sbo         -> unfished spawning biomass at the time of spawning.
+  // | - kappa       -> Goodyear recruitment compensation ratio K = 4h/(1-h); h=K/(4+K)
+  // | - so          -> Initial slope (max R/S) of the stock-recruitment relationship.
+  // | - beta        -> Density dependent term in the stock-recruitment relationship.
+  // | - m           -> Instantaneous natural mortality rate by nsex
+  // | - log_avgrec  -> Average sage recruitment(syr-nyr,area,group).
+  // | - log_recinit -> Avg. initial recruitment for initial year cohorts(area,group).
 	// | - log_m_devs  -> annual deviations in natural mortality.
 	// | - q           -> conditional MLE estimates of q in It=q*Bt*exp(epsilon)
 	// | - ct          -> predicted catch for each catch observation
 	// | - eta         -> standardized log residual (log(obs_ct)-log(ct))/sigma_{ct}
-    // | - rho         -> Proportion of total variance associated with obs error.
-    // | - varphi      -> Total precision of CPUE and Recruitment deviations.
-    // | - sig         -> STD of the observation errors in relative abundance data.
-    // | - tau         -> STD of the process errors (recruitment deviations).
-	// |
-	 
-	vector        ro(1,ngroup);
-	vector        bo(1,ngroup);
-	vector        no(1,ngroup);
-	vector       sbo(1,ngroup);
-	vector     kappa(1,ngroup);
-	vector steepness(1,ngroup);
-	vector        so(1,ngroup);
-	vector      beta(1,ngroup);
-	vector           m(1,n_gs);	
-	vector  log_avgrec(1,n_ag);			
-	vector log_recinit(1,n_ag);			
+  // | - rho         -> Proportion of total variance associated with obs error.
+  // | - varphi      -> Total precision of CPUE and Recruitment deviations.
+  // | - sig         -> STD of the observation errors in relative abundance data.
+  // | - tau         -> STD of the process errors (recruitment deviations).
+	// | - propEff_t 	 -> Proportion effective spawners at time t for SOK calcs
+	// | - propMat_t 	 -> Proportion mature in ponded fish
+	// | - psi_t 	     -> product of fecundity, propMat, propEff, propFem, gamma
+	// | 
+
+	vector          ro(1,ngroup);
+	vector          bo(1,ngroup);
+	vector          no(1,ngroup);
+	vector         sbo(1,ngroup);
+	vector       kappa(1,ngroup);
+	vector   steepness(1,ngroup);
+	vector          so(1,ngroup);
+	vector        beta(1,ngroup);
+	vector             m(1,n_gs);	
+	vector    log_avgrec(1,n_ag);			
+	vector   log_recinit(1,n_ag);			
 	vector          q(1,nItNobs);
 	vector         ct(1,nCtNobs);
 	vector        eta(1,nCtNobs);	
 	vector log_m_devs(syr+1,nyr);
-	vector    rho(1,ngroup);	
-	vector varphi(1,ngroup);
-	vector    sig(1,ngroup);	
-	vector    tau(1,ngroup); 
+	vector         rho(1,ngroup);	
+	vector      varphi(1,ngroup);
+	vector         sig(1,ngroup);	
+	vector         tau(1,ngroup);
+	vector    propEff_t(syr,nyr);
+	vector    propMat_t(syr,nyr);
+	vector        psi_t(syr,nyr);
 	
 	// |---------------------------------------------------------------------------------|
 	// | MATRIX OBJECTS
@@ -1515,7 +1559,7 @@ PARAMETER_SECTION
 	// | - rt          -> predicted sage-recruits based on S-R relationship.
 	// | - delta       -> residuals between estimated R and R from S-R curve (process err)
 	// | - annual_mean_weight    ->  ragged matrix of estimated annual mean weights for each gear with empirical annual mean weight observations  //START_RF_ADD   END_RF_ADD    RF ADDED THIS FOR TESTING WITH PACIFIC COD DATA
-	// |     
+	// | - pond_at  -> number of ponded fish at age and time    
 	
 	matrix  log_rt(1,n_ag,syr-nage+sage,nyr);
 	
@@ -1535,6 +1579,7 @@ PARAMETER_SECTION
 	matrix   delta(1,ngroup,syr+sage,nyr);
 	matrix   annual_mean_weight(1,nMeanWt,1,nMeanWtNobs);
 	matrix   obs_annual_mean_weight(1,nMeanWt,1,nMeanWtNobs);
+	matrix   pond_at(sage,nage,syr,nyr);
 
 	// |---------------------------------------------------------------------------------|
 	// | THREE DIMENSIONAL ARRAYS
@@ -2023,6 +2068,10 @@ FUNCTION void calcSelectivities(const ivector& isel_type)
 						log_sel(kgear)(ig)(i) = log( plogis(age,p1,p2)+tiny ) + tmp2(i);
 					}
 					break;
+
+				case 9:
+					// Mirrored selectivity from a different gear (update the selGearSOK int later)
+					log_sel(kgear) = log_sel(selGearSOK);
 					
 				case 11: // logistic selectivity based on mean length-at-age
 					for(i=syr; i<=nyr; i++)
@@ -2482,6 +2531,11 @@ FUNCTION calcTotalCatch
 
   	ct.initialize();
   	eta.initialize();
+  	propEff_t.initialize();
+  	propMat_t.initialize();
+  	psi_t.initialize();
+  	pond_at.initialize();
+
   	
   	dvar_vector     fa(sage,nage);
   	dvar_vector     ca(sage,nage);
@@ -2491,96 +2545,138 @@ FUNCTION calcTotalCatch
   	
 
   	for(ii=1;ii<=nCtNobs;ii++)
-	{
-		i    = dCatchData(ii,1);
-		k    = dCatchData(ii,2);
-		f    = dCatchData(ii,3);
-		g    = dCatchData(ii,4);
-		h    = dCatchData(ii,5);
-		l    = dCatchData(ii,6);
-		d_ct = dCatchData(ii,7);
-  		
-  		// | trap for retro year
-  		if( i<syr ) continue;
-  		if( i>nyr ) continue;
-
-
-		switch(l)
 		{
-			case 1:  // catch in weight
-				if( h )
-				{
-					ig     = pntr_ags(f,g,h);
-					fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
-					za     = Z(ig)(i);
-					sa     = S(ig)(i);
-					ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
-					ct(ii) = ca * d3_wt_avg(ig)(i);
-				}
-				else if( !h )
-				{
-					for(h=1;h<=nsex;h++)
+			i    = dCatchData(ii,1); // Year
+			k    = dCatchData(ii,2); // Gear
+			f    = dCatchData(ii,3); // Area
+			g    = dCatchData(ii,4); // Group
+			h    = dCatchData(ii,5); // Sex
+			l    = dCatchData(ii,6); // Type
+			d_ct = dCatchData(ii,7); // Value
+	  		
+	  		// | trap for retro year
+	  		if( i<syr ) continue;
+	  		if( i>nyr ) continue;
+
+
+			switch(l)
+			{
+				case 1:  // catch in weight
+					if( h )
 					{
 						ig     = pntr_ags(f,g,h);
 						fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
 						za     = Z(ig)(i);
 						sa     = S(ig)(i);
 						ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
-						ct(ii)+= ca * d3_wt_avg(ig)(i);		
+						ct(ii) = ca * d3_wt_avg(ig)(i);
 					}
-				}
-			break;
+					else if( !h )
+					{
+						for(h=1;h<=nsex;h++)
+						{
+							ig     = pntr_ags(f,g,h);
+							fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
+							za     = Z(ig)(i);
+							sa     = S(ig)(i);
+							ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
+							ct(ii)+= ca * d3_wt_avg(ig)(i);		
+						}
+					}
+				break;
 
-			case 2:  // catch in numbers
-				if( h )
-				{
-					ig     = pntr_ags(f,g,h);
-					fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
-					za     = Z(ig)(i);
-					sa     = S(ig)(i);
-					ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
-					ct(ii) = sum( ca );
-				}
-				else if( !h )
-				{
-					for(h=1;h<=nsex;h++)
+				case 2:  // catch in numbers
+					if( h )
 					{
 						ig     = pntr_ags(f,g,h);
 						fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
 						za     = Z(ig)(i);
 						sa     = S(ig)(i);
 						ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
-						ct(ii)+= sum( ca );
+						ct(ii) = sum( ca );
 					}
-				}
-			break;
+					else if( !h )
+					{
+						for(h=1;h<=nsex;h++)
+						{
+							ig     = pntr_ags(f,g,h);
+							fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
+							za     = Z(ig)(i);
+							sa     = S(ig)(i);
+							ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
+							ct(ii)+= sum( ca );
+						}
+					}
+				break;
 
-			case 3:  // roe fisheries, special case
-				if( h )
-				{
-					ig            = pntr_ags(f,g,h);
-					dvariable ssb = N(ig)(i) * d3_wt_mat(ig)(i);
-					ct(ii)        = (1.-exp(-ft(ig)(k)(i))) * ssb;
-				}
-				else if( !h )
-				{
-					for(h=1;h<=nsex;h++)
+				case 3:  // roe fisheries, special case
+					if( h )
 					{
 						ig            = pntr_ags(f,g,h);
 						dvariable ssb = N(ig)(i) * d3_wt_mat(ig)(i);
-						ct(ii)       += (1.-exp(-ft(ig)(k)(i))) * ssb;
+						ct(ii)        = (1.-exp(-ft(ig)(k)(i))) * ssb;
 					}
-				}
-			break;
-		}	// end of switch
+					else if( !h )
+					{
+						for(h=1;h<=nsex;h++)
+						{
+							ig            = pntr_ags(f,g,h);
+							dvariable ssb = N(ig)(i) * d3_wt_mat(ig)(i);
+							ct(ii)       += (1.-exp(-ft(ig)(k)(i))) * ssb;
+						}
+					}
+				break;
 
-		// | catch residual
-		eta(ii) = log(d_ct+TINY) - log(ct(ii)+TINY);
-	}
-	if(verbose){
-    LOG<<"**** Ok after calcTotalCatch ****\n";
-  }
-  }
+				case 4: // SOK fisheries - basically follow case 1, but convert SOK to ponded fish
+					if( h )
+					{
+						ig     = pntr_ags(f,g,h);
+						fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
+						za     = Z(ig)(i);
+						sa     = S(ig)(i);
+						// Catch at age in numbers
+						ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
+
+
+						// Here is where we differ from case 1
+						// Save number of ponded fish
+						pond_at.col(i) 	= ca;
+						// Now calculate proportion mature (in biomass units)
+						double tmpNmat = 0;
+						for( int a = sage; a <= nage; a++ )
+							tmpBmat += pond_at(a,i) * d3_wt_avg(ig)(i,a)  * ma(a);
+
+						propMat_t(i) += tmpNmat / (ca * d3_wt_avg(ig)(i));
+
+						// Take product for psi_t
+						psi_t(i) 			= propEff_t(i) * pFemale * gamma * fec * propMat_t(i)
+						// Calculate observed catch in biomass units and modify to SOK by psi_t
+						ct(ii) = ca * d3_wt_avg(ig)(i) * psi_t(i);
+					}
+					else if( !h )
+					{
+						// If we have sex information, we have information on pFemale,
+						// but I don't think we need this section for Herring.
+						for(h=1;h<=nsex;h++)
+						{
+							ig     = pntr_ags(f,g,h);
+							fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
+							za     = Z(ig)(i);
+							sa     = S(ig)(i);
+							ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
+							ct(ii)+= ca * d3_wt_avg(ig)(i);		
+						}
+					}
+
+			}	// end of switch
+
+			// | catch residual
+			eta(ii) = log(d_ct+TINY) - log(ct(ii)+TINY);
+		}
+		if(verbose){
+	    LOG<<"**** Ok after calcTotalCatch ****\n";
+	  }
+	  }
   
   	/**
   	Purpose:  This function computes the mle for survey q, calculates the survey 
