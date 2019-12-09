@@ -2346,11 +2346,19 @@ FUNCTION calcNumbersAtAge
 			{
 				log_rt(ih)(i) = (log_avgrec(ih)+log_rec_devs(ih)(i));
 				N(ig)(i,sage) = 1./nsex * mfexp( log_rt(ih)(i) );				
-			}
+			}			
 
 			N(ig)(i+1)(sage+1,nage) =++elem_prod(N(ig)(i)(sage,nage-1)
 			                                     ,S(ig)(i)(sage,nage-1));
+
 			N(ig)(i+1,nage)        +=  N(ig)(i,nage)*S(ig)(i,nage);
+
+			// Add back in ponded fish for beginning of next time step,
+			// with only post-ponding mortality applied.
+			for( int a = sage + 1; a <= nage; a++)
+				N(ig,i+1,a) += pond_at(a-1,i) * exp(-postPondM);
+
+			N(ig,i+1,nage) += pond_at(nage,i) * exp(-postPondM);
 
 			// average biomass for group in year i
 			//bt(g)(i) += N(ig)(i) * d3_wt_avg(ig)(i);
@@ -2549,7 +2557,7 @@ FUNCTION calcTotalCatch
 			i    = dCatchData(ii,1); // Year
 			k    = dCatchData(ii,2); // Gear
 			f    = dCatchData(ii,3); // Area
-			g    = dCatchData(ii,4); // Group
+			g    = dCatchData(ii,4); // Groupo
 			h    = dCatchData(ii,5); // Sex
 			l    = dCatchData(ii,6); // Type
 			d_ct = dCatchData(ii,7); // Value
