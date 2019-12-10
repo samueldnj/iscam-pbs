@@ -955,6 +955,7 @@ DATA_SECTION
 	vector  lambda_3(1,ngear);	
 	
 	LOC_CALCS
+		LOG << "selex_controls == " << selex_controls << "\n";
 		ahat_agemin      = selex_controls(2);
 		ghat_agemax      = selex_controls(3);
 		age_nodes = selex_controls(4);
@@ -1133,28 +1134,58 @@ DATA_SECTION
 	// |---------------------------------------------------------------------------------|
 	// | SOK controls                                                          |
 	// |---------------------------------------------------------------------------------|
-	// | fec 				= eggs per individual fish
-	// | gamma 			= SOK conversion factor
-	// | pEff_lb 		= lower bound on proportion effective
-	// | pEff_ub 		= upper bound on proportion effective
-	// | pFemale 		= proportion female
-	// | gNumSOK 		= gear Number
-	// | selGear 		= gear number for mirrored selectivity
-	// | postPondM 	= post ponding mortality rate
-	// | nPosSOK 		= number of years with positive SOK catch
+	// | 1:  fec 				= eggs per individual fish
+	// | 2:  gamma 			= SOK conversion factor
+	// | 3:  pEff_lb 		= lower bound on proportion effective
+	// | 4:  pEff_ub 		= upper bound on proportion effective
+	// | 5:  pFemale 		= proportion female
+	// | 6:  gNumSOK 		= gear Number
+	// | 7:  selGear 		= gear number for mirrored selectivity
+	// | 8:  postPondM 	= post ponding mortality rate
+	// | 9:  nPosSOK 					= number of years with positive SOK catch
+	// | 10: logitPropEffPhz 	= proportion effective dev phz
+	// | 11: stdDevPE 				= proportion effective std dev (logit scale)
+	// | 12: SOKdevPhz 				= SOK random effect dev phz
+	// | 13: stdDevSOKre			= SOK rand eff. std dev
+	// | 14: gammaPhz 				= SOK gamma deviation phase
+	// | 14: postPondMPhz 	  = SOK post ponding mortality rate
 
-	init fec;
-	init gamma;
-	init_vector propEffDist(1,2);
-	init pFemale;
-	init_int gNumSOK;
-	init_int selGearSOK;
-	init postPondM;
-	init_int nPosSOK;
-	init_int logitPropEffPhz;
+	init_vector SOKctrl(1,15);
+
+
+
+	number 	fec;
+	number 	gamma;
+	vector 	propEffDist(1,2);
+	number 	pFemale;
+	int 	 	gNumSOK;
+	int    	selGearSOK;
+	number 	postPondM;	
+	int    	nPosSOK;
+	int    	logitPropEffPhz;
+	int 	 	SOKdevPhz;
+	int 	 	gammaPhz;
+	int 		postPondMPhz;
+
 
 	init_int eofc;
 	LOC_CALCS
+		LOG << "\nSOKctrl == " << SOKctrl << "\n";
+		fec 							= SOKctrl(1);
+		gamma 						= SOKctrl(2);
+		propEffDist(1) 		= SOKctrl(3);
+		propEffDist(2) 		= SOKctrl(4);
+		pFemale 					= SOKctrl(5);
+		gNumSOK  					= SOKctrl(6);
+		selGearSOK 				= SOKctrl(7);
+		postPondM 	  		= SOKctrl(8);	
+		nPosSOK 	    		= SOKctrl(9);
+		logitPropEffPhz 	= SOKctrl(10);
+		SOKdevPhz					=	SOKctrl(12);
+		gammaPhz 					=	SOKctrl(14);
+		postPondMPhz 			= SOKctrl(15);
+
+
     if((d_iscamCntrl(13) || d_iscamCntrl(18)) && d_iscamCntrl(18) > 0.0001){
       cerr<<"Error - you have set the precision for the slow msy calculations"
         " too high. The maximum is 0.0001.\n";
@@ -1184,6 +1215,7 @@ DATA_SECTION
 	    LOG<<"|______________________________|\n";
 		}else{
 			LOG<<"\n ***** ERROR READING CONTROL FILE ***** \n";
+			LOG<<"\n eofc == " << eofc;
       exit(1);
 		}
 	END_CALCS
@@ -1478,7 +1510,13 @@ PARAMETER_SECTION
 	// |---------------------------------------------------------------------------------|
 	// | logitPropEff_t: logit scale deviation of proportion effective 
 	!! int nPhz_propEff = logitPropEffPhz;
+	!! int nPhz_sokDev = SOKdevPhz;
+	!! int nPhz_sokGamma = gammaPhz;
+	!! int nPhz_postPondM = postPondMPhz;
 	init_bounded_dev_vector logitPropEff_t(1,nPosSOK,-5,5,nPhz_propEff);
+	init_bounded_dev_vector logSOKdev_t(1,nPosSOK,-5,5,nPhz_sokDev);
+	init_bounded_number logGammaDev(-5,5,nPhz_sokGamma);
+	init_bounded_number logPostPondMDev(-5,5,nPhz_postPondM);
 
 	// |---------------------------------------------------------------------------------|
 	// | OBJECTIVE FUNCTION VALUE
@@ -1541,8 +1579,11 @@ PARAMETER_SECTION
 	vector         sig(1,ngroup);	
 	vector         tau(1,ngroup);
 	vector    propEff_t(syr,nyr);
-	vector    propMat_t(syr,nyr);
-	vector        psi_t(syr,nyr);
+	
+
+	sdreport_vector     sokDev_t(syr,nyr);
+	sdreport_vector    propMat_t(syr,nyr);
+	sdreport_vector        psi_t(syr,nyr);
 	
 	// |---------------------------------------------------------------------------------|
 	// | MATRIX OBJECTS
@@ -2071,7 +2112,10 @@ FUNCTION void calcSelectivities(const ivector& isel_type)
 
 				case 9:
 					// Mirrored selectivity from a different gear (update the selGearSOK int later)
-					log_sel(kgear) = log_sel(selGearSOK);
+					LOG << "Case 9 selectivity \n";
+					for( i = syr; i <= nyr; i++)
+						log_sel(kgear)(ig)(i) = log_sel(selGearSOK)(ig)(i);
+					break;
 					
 				case 11: // logistic selectivity based on mean length-at-age
 					for(i=syr; i<=nyr; i++)
@@ -2356,9 +2400,11 @@ FUNCTION calcNumbersAtAge
 			// Add back in ponded fish for beginning of next time step,
 			// with only post-ponding mortality applied.
 			for( int a = sage + 1; a <= nage; a++)
-				N(ig,i+1,a) += pond_at(a-1,i) * exp(-postPondM);
+				if( pond_at(a-1,i) > 0)
+					N(ig,i+1,a) += pond_at(a-1,i) * exp(-postPondM * exp(logPostPondMDev));
 
-			N(ig,i+1,nage) += pond_at(nage,i) * exp(-postPondM);
+			if( pond_at(nage,i) > 0)
+				N(ig,i+1,nage) += pond_at(nage,i) * exp(-postPondM * exp(logPostPondMDev));
 
 			// average biomass for group in year i
 			//bt(g)(i) += N(ig)(i) * d3_wt_avg(ig)(i);
@@ -2540,9 +2586,12 @@ FUNCTION calcTotalCatch
   	ct.initialize();
   	eta.initialize();
   	propEff_t.initialize();
+  	sokDev_t.initialize();
   	propMat_t.initialize();
   	psi_t.initialize();
   	pond_at.initialize();
+
+  	int tSOK = 0;
 
   	
   	dvar_vector     fa(sage,nage);
@@ -2638,6 +2687,7 @@ FUNCTION calcTotalCatch
 				case 4: // SOK fisheries - basically follow case 1, but convert SOK to ponded fish
 					if( h )
 					{
+						tSOK++;
 						ig     = pntr_ags(f,g,h);
 						fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
 						za     = Z(ig)(i);
@@ -2648,16 +2698,19 @@ FUNCTION calcTotalCatch
 
 						// Here is where we differ from case 1
 						// Save number of ponded fish
-						pond_at.col(i) 	= ca;
 						// Now calculate proportion mature (in biomass units)
-						double tmpNmat = 0;
+						dvariable tmpBmat = 0;
+						tmpBmat += ca*ma * d3_wt_avg(ig)(i);
 						for( int a = sage; a <= nage; a++ )
-							tmpBmat += pond_at(a,i) * d3_wt_avg(ig)(i,a)  * ma(a);
+						{
+							pond_at(a,i) 	 = ca(a);
+						}
 
-						propMat_t(i) += tmpNmat / (ca * d3_wt_avg(ig)(i));
+						propMat_t(i) += tmpBmat / (ca * d3_wt_avg(ig)(i));
+						propEff_t(i)  = propEffDist(1) + (propEffDist(2) - propEffDist(1)) / (1 + exp(-logitPropEff_t(tSOK)));
 
 						// Take product for psi_t
-						psi_t(i) 			= propEff_t(i) * pFemale * gamma * fec * propMat_t(i)
+						psi_t(i) 			= propEff_t(i) * pFemale * gamma * exp(logGammaDev) * fec * propMat_t(i);
 						// Calculate observed catch in biomass units and modify to SOK by psi_t
 						ct(ii) = ca * d3_wt_avg(ig)(i) * psi_t(i);
 					}
@@ -2667,12 +2720,38 @@ FUNCTION calcTotalCatch
 						// but I don't think we need this section for Herring.
 						for(h=1;h<=nsex;h++)
 						{
+							tSOK++;
 							ig     = pntr_ags(f,g,h);
 							fa     = ft(ig)(k)(i) * mfexp(log_sel(k)(ig)(i));
 							za     = Z(ig)(i);
 							sa     = S(ig)(i);
 							ca     = elem_prod(elem_prod(elem_div(fa,za),1.-sa),N(ig)(i));
-							ct(ii)+= ca * d3_wt_avg(ig)(i);		
+
+							// Here is where we differ from case 1
+							// Save number of ponded fish
+							// Now calculate proportion mature (in biomass units)
+							//LOG << "calc = " << ca * ma * d3_wt_avg(ig)(i) << endl;
+							dvar_vector tmpBmat(sage,nage);
+							tmpBmat.initialize();
+							//tmpBmat = elem_prod(ca,ma);
+
+							for( int a = sage; a <= nage; a++ )
+							{
+								pond_at(a,i) 	  = ca(a);
+								tmpBmat(a)     += ca(a) * ma(ig,a);
+							}
+
+							propMat_t(i) = (tmpBmat * d3_wt_avg(ig)(i)) / (ca * d3_wt_avg(ig)(i));
+
+							propEff_t(i)  = propEffDist(1) + (propEffDist(2) - propEffDist(1)) / (1 + exp(-logitPropEff_t(tSOK)));
+							sokDev_t(i)   = exp(logSOKdev_t(tSOK));
+
+							// Take product for psi_t
+							psi_t(i) 			= propEff_t(i) * pFemale * gamma * exp(logGammaDev) * fec * propMat_t(i) * sokDev_t(i);
+							// Calculate observed catch in biomass units and modify to SOK by psi_t
+							ct(ii) 				+= ca * d3_wt_avg(ig)(i) * psi_t(i);
+
+
 						}
 					}
 
@@ -4204,8 +4283,9 @@ FUNCTION calcObjectiveFunction
 	// | - pvec(5)  -> penalty on initial recruitment vector.
 	// | - pvec(6)  -> constraint to ensure sum(log_rec_dev) = 0
 	// | - pvec(7)  -> constraint to ensure sum(init_log_rec_dev) = 0
+	// | - pvec(8)  -> proportion effective estimates
 	// |
-	dvar_vector pvec(1,7);
+	dvar_vector pvec(1,8);
 	pvec.initialize();
 	
 	dvariable log_fbar = mean(log_ft_pars);
@@ -4243,6 +4323,22 @@ FUNCTION calcObjectiveFunction
 			pvec(7) += 1.e5 * s*s;
 		}
 	}
+
+	if(active(logitPropEff_t))
+	{
+		pvec(8) = 0.5 * norm2( logitPropEff_t ) / square(SOKctrl(11));
+	}
+
+	if(active(logSOKdev_t))
+	{
+		pvec(8) = 0.5 * norm2( logSOKdev_t )/square(SOKctrl(13));
+	}
+	if( active(logGammaDev))
+		pvec(8) += square(logGammaDev/0.1);
+
+	if( active(logPostPondMDev))
+		pvec(8) += square(logPostPondMDev/0.05);
+
 	
 	if(active(log_m_nodes))
 	{
@@ -5292,6 +5388,17 @@ REPORT_SECTION
 	// |---------------------------------------------------------------------------------|
 	// |
 	REPORT(N);
+
+	// |---------------------------------------------------------------------------------|
+	// | SPAWN ON KELP 
+	// |---------------------------------------------------------------------------------|
+	// |
+	REPORT(pond_at);
+	REPORT(propEff_t);
+	REPORT(propMat_t);
+	REPORT(psi_t);
+	REPORT(sokDev_t);
+	REPORT(postPondM);
 
 	
 	//START_RF_ADD
